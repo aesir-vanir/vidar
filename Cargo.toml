@@ -1,0 +1,8 @@
+[package]
+authors = ["Jason Ozias <jason.ozias@gmail.com>"]
+name = "vidar"
+version = "0.1.0"
+
+[dependencies]
+error-chain = "0.11.0-rc.2"
+getset = "0.0.5"
