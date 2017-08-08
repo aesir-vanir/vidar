@@ -1,6 +1,8 @@
 //! Environment Mapping
 #![feature(try_from)]
 #[macro_use]
+extern crate derive_builder;
+#[macro_use]
 extern crate error_chain;
 #[macro_use]
 extern crate getset;
@@ -11,8 +13,9 @@ use std::convert::TryFrom;
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 
-mod error;
+pub mod error;
 
 /// Suffix for environment variables file name.
 const ENV_SUFFIX: &'static str = ".env";
@@ -64,6 +67,69 @@ impl<'a> From<Kind> for &'a str {
     }
 }
 
+impl From<Kind> for String {
+    fn from(kind: Kind) -> String {
+        String::from(match kind {
+                         Kind::Common => "common",
+                         Kind::Development => "dev",
+                         Kind::Test => "test",
+                         Kind::Integration => "int",
+                         Kind::Staging => "stage",
+                         Kind::Production => "prod",
+                     })
+    }
+}
+
+/// A `Config` used when loading environment properties.
+#[derive(Builder, Clone, Debug, Eq, Getters, PartialEq, Setters)]
+#[builder(default, setter(into))]
+pub struct Config {
+    /// The environment `Kind` we are loading.
+    #[get = "pub"]
+    #[set = "pub"]
+    kind: Kind,
+    /// Should we read from a `common.env` file?
+    #[get = "pub"]
+    #[set = "pub"]
+    common: Option<bool>,
+    /// Should we recursively search up directories for the files?
+    #[get = "pub"]
+    #[set = "pub"]
+    recursive: Option<bool>,
+    /// The base directory to look for files.
+    #[get = "pub"]
+    #[set = "pub"]
+    base_dir: Option<PathBuf>,
+    /// Does the property file have comments?
+    #[get = "pub"]
+    #[set = "pub"]
+    comments: Option<bool>,
+    /// The comment character.
+    #[get = "pub"]
+    #[set = "pub"]
+    comment_char: Option<char>,
+}
+
+impl Config {
+    /// Create a new `Config` for the given `Kind`.
+    pub fn new(kind: Kind) -> Config {
+        Config {
+            kind: kind,
+            common: Some(true),
+            recursive: None,
+            base_dir: None,
+            comments: None,
+            comment_char: None,
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Config {
+        Config::new(Kind::Common)
+    }
+}
+
 /// The `Environment` of the given kind.
 #[derive(Clone, Debug, Eq, Getters, PartialEq, Setters)]
 pub struct Environment {
@@ -78,24 +144,34 @@ pub struct Environment {
 impl Environment {}
 
 /// Read a property file into a `HashMap`.
-fn read_props_file(prefix: &str, kvs: &mut HashMap<String, String>) -> Result<()> {
+fn read_props_file(config: &Config, props: &mut HashMap<String, String>) -> Result<()> {
     let mut file_path = env::current_dir()?;
-    let mut common_filename = String::from(prefix);
+    let mut common_filename: String = (*config.kind()).into();
     common_filename.push_str(ENV_SUFFIX);
     file_path.push(common_filename);
     let common_file = File::open(file_path)?;
     let common_reader = BufReader::new(common_file);
     for line_res in common_reader.lines() {
-        if let Ok(line) = line_res {
-            let mut kv = Vec::new();
-            for tok in line.split('=') {
-                kv.push(tok);
-            }
+        match line_res {
+            Ok(line) => {
+                if let Some(true) = *config.comments() {
+                    if let Some(comment_char) = *config.comment_char() {
+                        if line.starts_with(comment_char) {
+                            continue;
+                        }
+                    }
+                }
+                let mut kv = Vec::new();
+                for tok in line.split('=') {
+                    kv.push(tok);
+                }
 
-            if kv.len() != 2 {
-                return Err(ErrorKind::InvalidProperty.into());
+                if kv.len() != 2 {
+                    return Err(ErrorKind::InvalidProperty.into());
+                }
+                props.insert(kv[0].to_string(), kv[1].to_string());
             }
-            kvs.insert(kv[0].to_string(), kv[1].to_string());
+            Err(e) => return Err(e.into()),
         }
     }
     Ok(())
@@ -107,8 +183,10 @@ impl<'a> TryFrom<&'a str> for Environment {
     fn try_from(name: &'a str) -> Result<Environment> {
         let mut props: HashMap<String, String> = HashMap::new();
         let current: Kind = TryFrom::try_from(name)?;
-        read_props_file(Kind::Common.into(), &mut props)?;
-        read_props_file(current.into(), &mut props)?;
+        let mut config: Config = Default::default();
+        read_props_file(&config, &mut props)?;
+        config.set_kind(current);
+        read_props_file(&config, &mut props)?;
 
         Ok(Environment {
                current: current,
@@ -117,15 +195,33 @@ impl<'a> TryFrom<&'a str> for Environment {
     }
 }
 
+impl TryFrom<Config> for Environment {
+    type Error = Error;
+
+    fn try_from(config: Config) -> Result<Environment> {
+        let mut props: HashMap<String, String> = HashMap::new();
+        if let Some(true) = *config.common() {
+            let common_config: Config = Default::default();
+            read_props_file(&common_config, &mut props)?;
+        }
+        read_props_file(&config, &mut props)?;
+
+        Ok(Environment {
+               current: *config.kind(),
+               props: props,
+           })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use error::{Error, ErrorKind};
+    use std::collections::HashMap;
     use std::convert::TryFrom;
-    use std::io::{self, Write};
-    use super::Environment;
+    use super::{Config, ConfigBuilder, Environment, Kind};
 
     #[test]
-    fn no_file_io_error() {
+    fn no_file() {
         match Environment::try_from("int") {
             Ok(_) => assert!(false),
             Err(e) => {
@@ -138,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn bad_props_invalid_property() {
+    fn invalid_property() {
         match Environment::try_from("stage") {
             Ok(_) => assert!(false),
             Err(e) => {
@@ -163,71 +259,70 @@ mod tests {
         }
     }
 
-    #[test]
-    fn dev_env() {
-        match Environment::try_from("dev") {
+    fn check_test_props(props: &HashMap<String, String>) {
+        assert!(props.contains_key("key1"));
+        assert_eq!(props.get(&"key1".to_string()), Some(&"val1".to_string()));
+        assert!(props.contains_key("key2"));
+        assert_eq!(props.get(&"key2".to_string()), Some(&"val2".to_string()));
+        assert!(props.contains_key("key3"));
+        assert_eq!(props.get(&"key3".to_string()), Some(&"val3".to_string()));
+        assert!(props.contains_key("url"));
+    }
+
+    fn check_env_str(name: &str, url_value: &str) {
+        match Environment::try_from(name) {
             Ok(env) => {
-                let kvs = env.props();
-                assert!(kvs.contains_key("key1"));
-                assert_eq!(kvs.get(&"key1".to_string()), Some(&"val1".to_string()));
-                assert!(kvs.contains_key("key2"));
-                assert_eq!(kvs.get(&"key2".to_string()), Some(&"val2".to_string()));
-                assert!(kvs.contains_key("key3"));
-                assert_eq!(kvs.get(&"key3".to_string()), Some(&"val3".to_string()));
-                assert!(kvs.contains_key("url"));
-                assert_eq!(kvs.get(&"url".to_string()),
-                           Some(&"https://localhost".to_string()));
+                let props = env.props();
+                check_test_props(&props);
+                assert_eq!(props.get(&"url".to_string()), Some(&url_value.to_string()));
             }
-            Err(e) => {
-                writeln!(io::stderr(), "{}", e).expect("");
-                assert!(false)
+            Err(_) => assert!(false),
+        }
+    }
+
+    fn check_env_config(config: Config, url_value: &str) {
+        match Environment::try_from(config) {
+            Ok(env) => {
+                let props = env.props();
+                check_test_props(&props);
+                assert_eq!(props.get(&"url".to_string()), Some(&url_value.to_string()));
             }
+            Err(_) => assert!(false),
         }
     }
 
     #[test]
-    fn test_env() {
-        match Environment::try_from("test") {
-            Ok(env) => {
-                let kvs = env.props();
-                assert!(kvs.contains_key("key1"));
-                assert_eq!(kvs.get(&"key1".to_string()), Some(&"val1".to_string()));
-                assert!(kvs.contains_key("key2"));
-                assert_eq!(kvs.get(&"key2".to_string()), Some(&"val2".to_string()));
-                assert!(kvs.contains_key("key3"));
-                assert_eq!(kvs.get(&"key3".to_string()), Some(&"val3".to_string()));
-                assert!(kvs.contains_key("url"));
-                assert_eq!(kvs.get(&"url".to_string()),
-                           Some(&"https://testurl.vidar.com".to_string()));
-            }
-            Err(e) => {
-                writeln!(io::stderr(), "{}", e).expect("");
-                assert!(false)
-            }
-        }
+    fn dev_env() {
+        check_env_str("dev", "https://localhost");
+    }
+
+    #[test]
+    fn dev_config_env() {
+        let mut config: Config = Default::default();
+        config.set_kind(Kind::Development);
+        check_env_config(config, "https://localhost");
+    }
+
+    #[test]
+    fn test_with_comments_env() {
+        let config = ConfigBuilder::default()
+            .kind(Kind::Test)
+            .comments(true)
+            .comment_char('#')
+            .build()
+            .expect("Unable to build Config");
+        check_env_config(config, "https://testurl.vidar.com");
     }
 
     #[test]
     fn prod_env() {
-        match Environment::try_from("prod") {
-            Ok(env) => {
-                let kvs = env.props();
-                assert!(kvs.contains_key("key1"));
-                assert_eq!(kvs.get(&"key1".to_string()), Some(&"val1".to_string()));
-                assert!(kvs.contains_key("key2"));
-                assert_eq!(kvs.get(&"key2".to_string()), Some(&"val2".to_string()));
-                assert!(kvs.contains_key("key3"));
-                assert_eq!(kvs.get(&"key3".to_string()), Some(&"val3".to_string()));
-                assert!(kvs.contains_key("creds"));
-                assert_eq!(kvs.get(&"creds".to_string()), Some(&"secret".to_string()));
-                assert!(kvs.contains_key("url"));
-                assert_eq!(kvs.get(&"url".to_string()),
-                           Some(&"https://produrl.vidar.com".to_string()));
-            }
-            Err(e) => {
-                writeln!(io::stderr(), "{}", e).expect("");
-                assert!(false)
-            }
-        }
+        check_env_str("prod", "https://produrl.vidar.com");
+    }
+
+    #[test]
+    fn prod_config_env() {
+        let mut config: Config = Default::default();
+        config.set_kind(Kind::Production);
+        check_env_config(config, "https://produrl.vidar.com");
     }
 }
