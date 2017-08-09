@@ -12,10 +12,10 @@ key2=val2
 key3=val3";
 pub const DEV: &'static str = r"url=https://localhost";
 pub const INT: &'static str = r"";
-const TEST: &'static str = r"# This is a comment
+pub const TEST: &'static str = r"# This is a comment
 url=https://testurl.vidar.com";
-const STAGE: &'static str = r"this is a bad property";
-const PROD: &'static str = r"url=https://produrl.vidar.com
+pub const STAGE: &'static str = r"this is a bad property";
+pub const PROD: &'static str = r"url=https://produrl.vidar.com
 creds=secret";
 
 fn create_file(kind: Kind, contents: &str, path: &mut PathBuf) -> Result<()> {
@@ -43,7 +43,9 @@ pub fn setup(subfolder: &str, content_map: Option<HashMap<Kind, &str>>) -> Resul
     fs::create_dir_all(&path)?;
 
     if let Some(content_map) = content_map {
-
+        for (kind, content) in content_map {
+            create_file(kind, content, &mut path)?;
+        }
     } else {
         create_file(Kind::Common, COMMON, &mut path)?;
         create_file(Kind::Development, DEV, &mut path)?;
