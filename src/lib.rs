@@ -70,13 +70,13 @@ impl<'a> From<Kind> for &'a str {
 impl From<Kind> for String {
     fn from(kind: Kind) -> String {
         String::from(match kind {
-                         Kind::Common => "common",
-                         Kind::Development => "dev",
-                         Kind::Test => "test",
-                         Kind::Integration => "int",
-                         Kind::Staging => "stage",
-                         Kind::Production => "prod",
-                     })
+            Kind::Common => "common",
+            Kind::Development => "dev",
+            Kind::Test => "test",
+            Kind::Integration => "int",
+            Kind::Staging => "stage",
+            Kind::Production => "prod",
+        })
     }
 }
 
@@ -189,9 +189,9 @@ impl<'a> TryFrom<&'a str> for Environment {
         read_props_file(&config, &mut props)?;
 
         Ok(Environment {
-               current: current,
-               props: props,
-           })
+            current: current,
+            props: props,
+        })
     }
 }
 
@@ -207,9 +207,9 @@ impl TryFrom<Config> for Environment {
         read_props_file(&config, &mut props)?;
 
         Ok(Environment {
-               current: *config.kind(),
-               props: props,
-           })
+            current: *config.kind(),
+            props: props,
+        })
     }
 }
 
@@ -224,12 +224,10 @@ mod tests {
     fn no_file() {
         match Environment::try_from("int") {
             Ok(_) => assert!(false),
-            Err(e) => {
-                match e {
-                    Error(ErrorKind::Io(_), _) => assert!(true),
-                    _ => assert!(false),
-                }
-            }
+            Err(e) => match e {
+                Error(ErrorKind::Io(_), _) => assert!(true),
+                _ => assert!(false),
+            },
         }
     }
 
@@ -237,25 +235,10 @@ mod tests {
     fn invalid_property() {
         match Environment::try_from("stage") {
             Ok(_) => assert!(false),
-            Err(e) => {
-                match e {
-                    Error(ErrorKind::InvalidProperty, _) => assert!(true),
-                    _ => assert!(false),
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn invalid_kind() {
-        match Environment::try_from("blah") {
-            Ok(_) => assert!(false),
-            Err(e) => {
-                match e {
-                    Error(ErrorKind::InvalidKind(_), _) => assert!(true),
-                    _ => assert!(false),
-                }
-            }
+            Err(e) => match e {
+                Error(ErrorKind::InvalidProperty, _) => assert!(true),
+                _ => assert!(false),
+            },
         }
     }
 
