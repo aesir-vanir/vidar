@@ -6,8 +6,7 @@ mod lifecycle;
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use vidar::{Config, ConfigBuilder, Environment, Kind};
-use vidar::error::{Error, ErrorKind};
+use vidar::{Config, ConfigBuilder, Environment, Error, ErrorKind, Kind};
 
 #[test]
 fn no_file() {
@@ -18,8 +17,14 @@ fn no_file() {
     most.insert(Kind::Staging, lifecycle::STAGE);
     most.insert(Kind::Production, lifecycle::PROD);
 
+    let config = ConfigBuilder::default()
+        .app_name("no_file")
+        .kind(Kind::Integration)
+        .build()
+        .expect("Unable to build `Config`");
+
     wrap!("no_file", Some(most), {
-        match Environment::try_from("int") {
+        match Environment::try_from(config) {
             Ok(_) => assert!(false),
             Err(e) => match e {
                 Error(ErrorKind::Io(_), _) => assert!(true),
@@ -30,22 +35,14 @@ fn no_file() {
 }
 
 #[test]
-fn invalid_kind() {
-    wrap!("invalid_kind", None, {
-        match Environment::try_from("blah") {
-            Ok(_) => assert!(false),
-            Err(e) => match e {
-                Error(ErrorKind::InvalidKind(_), _) => assert!(true),
-                _ => assert!(false),
-            },
-        }
-    });
-}
-
-#[test]
 fn invalid_property() {
+    let config = ConfigBuilder::default()
+        .app_name("invalid_property")
+        .kind(Kind::Staging)
+        .build()
+        .expect("Unable to build `Config`");
     wrap!("invalid_property", None, {
-        match Environment::try_from("stage") {
+        match Environment::try_from(config) {
             Ok(_) => assert!(false),
             Err(e) => match e {
                 Error(ErrorKind::InvalidProperty, _) => assert!(true),
@@ -65,19 +62,6 @@ fn check_test_props(props: &HashMap<String, String>) {
     assert!(props.contains_key("url"));
 }
 
-fn check_env_str(folder_name: &str, name: &str, url_value: &str) {
-    wrap!(folder_name, None, {
-        match Environment::try_from(name) {
-            Ok(env) => {
-                let props = env.props();
-                check_test_props(props);
-                assert_eq!(props.get(&"url".to_string()), Some(&url_value.to_string()));
-            }
-            Err(_) => assert!(false),
-        }
-    });
-}
-
 fn check_env_config(folder_name: &str, config: Config, url_value: &str) {
     wrap!(folder_name, None, {
         match Environment::try_from(config) {
@@ -86,46 +70,41 @@ fn check_env_config(folder_name: &str, config: Config, url_value: &str) {
                 check_test_props(props);
                 assert_eq!(props.get(&"url".to_string()), Some(&url_value.to_string()));
             }
-            Err(_) => assert!(false),
+            Err(_e) => assert!(false),
         }
     });
 }
 
 #[test]
-fn dev_env() {
-    check_env_str("dev_env", "dev", "https://localhost");
-}
-
-#[test]
-fn prod_env() {
-    check_env_str("prod_env", "prod", "https://produrl.vidar.com");
-}
-
-#[test]
 fn dev_config_env() {
-    let mut config: Config = Default::default();
-    config.set_kind(Kind::Development);
-    check_env_config("dev_config_env", config, "https://localhost");
+    let config = ConfigBuilder::default()
+        .app_name("dev_config")
+        .common(true)
+        .build()
+        .expect("Unable to build Config");
+    check_env_config("dev_config", config, "https://localhost");
 }
 
 #[test]
 fn test_with_comments_env() {
     let config = ConfigBuilder::default()
+        .app_name("test_with_comments")
         .kind(Kind::Test)
+        .common(true)
         .comments(true)
         .comment_char('#')
         .build()
         .expect("Unable to build Config");
-    check_env_config(
-        "test_with_comments_env",
-        config,
-        "https://testurl.vidar.com",
-    );
+    check_env_config("test_with_comments", config, "https://testurl.vidar.com");
 }
 
 #[test]
 fn prod_config_env() {
-    let mut config: Config = Default::default();
-    config.set_kind(Kind::Production);
-    check_env_config("prod_config_env", config, "https://produrl.vidar.com");
+    let config = ConfigBuilder::default()
+        .app_name("prod_config")
+        .common(true)
+        .kind(Kind::Production)
+        .build()
+        .expect("Unable to build Config");
+    check_env_config("prod_config", config, "https://produrl.vidar.com");
 }

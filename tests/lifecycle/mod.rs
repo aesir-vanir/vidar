@@ -1,11 +1,9 @@
 //! `vidar` test setup
 use std::collections::HashMap;
-use std::env;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use vidar::Kind;
-use vidar::error::Result;
+use vidar::{self, Kind, Result};
 
 pub const COMMON: &'static str = r"key1=val1
 key2=val2
@@ -38,7 +36,7 @@ fn create_file(kind: Kind, contents: &str, path: &mut PathBuf) -> Result<()> {
 }
 
 pub fn setup(subfolder: &str, content_map: Option<HashMap<Kind, &str>>) -> Result<()> {
-    let mut path = env::temp_dir();
+    let mut path = vidar::get_config_path()?;
     path.push(subfolder);
     fs::create_dir_all(&path)?;
 
@@ -55,12 +53,11 @@ pub fn setup(subfolder: &str, content_map: Option<HashMap<Kind, &str>>) -> Resul
         create_file(Kind::Production, PROD, &mut path)?;
     }
 
-    env::set_current_dir(&path)?;
     Ok(())
 }
 
 pub fn teardown(subfolder: &str) -> Result<()> {
-    let mut path = env::temp_dir();
+    let mut path = vidar::get_config_path()?;
     path.push(subfolder);
     fs::remove_dir_all(path)?;
     Ok(())

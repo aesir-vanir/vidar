@@ -7,15 +7,15 @@ extern crate error_chain;
 #[macro_use]
 extern crate getset;
 
-use error::{Error, ErrorKind, Result};
+mod error;
+
+pub use error::{Error, ErrorKind, Result};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::env;
+use std::{env, fmt};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-
-pub mod error;
 
 /// Suffix for environment variables file name.
 const ENV_SUFFIX: &'static str = ".env";
@@ -35,6 +35,13 @@ pub enum Kind {
     Staging,
     /// `Production` specific environment variables.
     Production,
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let kind_str: String = (*self).into();
+        write!(f, "{}", kind_str)
+    }
 }
 
 impl<'a> TryFrom<&'a str> for Kind {
@@ -82,51 +89,43 @@ impl From<Kind> for String {
 
 /// A `Config` used when loading environment properties.
 #[derive(Builder, Clone, Debug, Eq, Getters, PartialEq, Setters)]
-#[builder(default, setter(into))]
+#[builder(setter(into))]
 pub struct Config {
     /// The environment `Kind` we are loading.
     #[get = "pub"]
     #[set = "pub"]
+    #[builder(default = "self.default_kind()")]
     kind: Kind,
+    /// The application name.
+    #[get = "pub"]
+    #[set = "pub"]
+    app_name: String,
     /// Should we read from a `common.env` file?
     #[get = "pub"]
     #[set = "pub"]
-    common: Option<bool>,
-    /// Should we recursively search up directories for the files?
-    #[get = "pub"]
-    #[set = "pub"]
-    recursive: Option<bool>,
-    /// The base directory to look for files.
-    #[get = "pub"]
-    #[set = "pub"]
-    base_dir: Option<PathBuf>,
+    #[builder(default = "false")]
+    common: bool,
     /// Does the property file have comments?
     #[get = "pub"]
     #[set = "pub"]
-    comments: Option<bool>,
+    #[builder(default = "false")]
+    comments: bool,
     /// The comment character.
     #[get = "pub"]
     #[set = "pub"]
-    comment_char: Option<char>,
+    #[builder(default = "'#'")]
+    comment_char: char,
+    /// Should we pull the OS environment into our props?
+    #[get = "pub"]
+    #[set = "pub"]
+    #[builder(default = "false")]
+    os: bool,
 }
 
-impl Config {
-    /// Create a new `Config` for the given `Kind`.
-    pub fn new(kind: Kind) -> Config {
-        Config {
-            kind: kind,
-            common: Some(true),
-            recursive: None,
-            base_dir: None,
-            comments: None,
-            comment_char: None,
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Config {
-        Config::new(Kind::Common)
+impl ConfigBuilder {
+    /// Setup the default `Kind` for a `Config`.
+    fn default_kind(&self) -> Kind {
+        Kind::Development
     }
 }
 
@@ -143,9 +142,50 @@ pub struct Environment {
 
 impl Environment {}
 
+/// Get the default file path.
+#[cfg(unix)]
+pub fn get_config_path() -> Result<PathBuf> {
+    let mut config_path = PathBuf::new();
+
+    match env::var("XDG_CONFIG_HOME") {
+        Ok(val) => {
+            config_path.push(val);
+        }
+        Err(_e) => if let Some(home_dir) = env::home_dir() {
+            config_path.push(home_dir);
+            config_path.push(".config");
+        } else {
+            return Err(ErrorKind::ConfigPath.into());
+        },
+    }
+
+    Ok(config_path)
+}
+
+/// Get the default file path.
+#[cfg(windows)]
+pub fn get_config_path() -> Result<PathBuf> {
+    let mut config_path = PathBuf::new();
+
+    match env::var("APPDATA") {
+        Ok(val) => {
+            config_path.push(val);
+        }
+        Err(_e) => if let Some(home_dir) = env::home_dir() {
+            config_path.push(home_dir);
+            config_path.push(".config");
+        } else {
+            return Err(ErrorKind::ConfigPath.into());
+        },
+    }
+
+    Ok(config_path)
+}
+
 /// Read a property file into a `HashMap`.
 fn read_props_file(config: &Config, props: &mut HashMap<String, String>) -> Result<()> {
-    let mut file_path = env::current_dir()?;
+    let mut file_path = get_config_path()?;
+    file_path.push(config.app_name());
     let mut common_filename: String = (*config.kind()).into();
     common_filename.push_str(ENV_SUFFIX);
     file_path.push(common_filename);
@@ -154,12 +194,8 @@ fn read_props_file(config: &Config, props: &mut HashMap<String, String>) -> Resu
     for line_res in common_reader.lines() {
         match line_res {
             Ok(line) => {
-                if let Some(true) = *config.comments() {
-                    if let Some(comment_char) = *config.comment_char() {
-                        if line.starts_with(comment_char) {
-                            continue;
-                        }
-                    }
+                if *config.comments() && line.starts_with(*config.comment_char()) {
+                    continue;
                 }
                 let mut kv = Vec::new();
                 for tok in line.split('=') {
@@ -177,31 +213,19 @@ fn read_props_file(config: &Config, props: &mut HashMap<String, String>) -> Resu
     Ok(())
 }
 
-impl<'a> TryFrom<&'a str> for Environment {
-    type Error = Error;
-
-    fn try_from(name: &'a str) -> Result<Environment> {
-        let mut props: HashMap<String, String> = HashMap::new();
-        let current: Kind = TryFrom::try_from(name)?;
-        let mut config: Config = Default::default();
-        read_props_file(&config, &mut props)?;
-        config.set_kind(current);
-        read_props_file(&config, &mut props)?;
-
-        Ok(Environment {
-            current: current,
-            props: props,
-        })
-    }
-}
-
 impl TryFrom<Config> for Environment {
     type Error = Error;
 
     fn try_from(config: Config) -> Result<Environment> {
         let mut props: HashMap<String, String> = HashMap::new();
-        if let Some(true) = *config.common() {
-            let common_config: Config = Default::default();
+        if *config.os() {
+            props.extend(env::vars());
+        }
+        if *config.common() {
+            let common_config = ConfigBuilder::default()
+                .app_name(config.app_name().to_string())
+                .kind(Kind::Common)
+                .build()?;
             read_props_file(&common_config, &mut props)?;
         }
         read_props_file(&config, &mut props)?;
