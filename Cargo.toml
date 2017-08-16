@@ -14,3 +14,6 @@ version = "0.1.0"
 derive_builder = "0.5.0"
 error-chain = "0.11.0-rc.2"
 getset = "0.0.5"
+
+[replace]
+"derive_builder:0.5.0" = { path = "../rust-derive-builder/derive_builder" }
