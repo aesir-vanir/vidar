@@ -1,4 +1,5 @@
 //! Environment Mapping
+#![cfg_attr(feature = "cargo-clippy", allow(use_self))]
 #![feature(try_from)]
 #[macro_use]
 extern crate derive_builder;
