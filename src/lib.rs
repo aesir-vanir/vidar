@@ -19,7 +19,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 /// Suffix for environment variables file name.
-const ENV_SUFFIX: &'static str = ".env";
+const ENV_SUFFIX: &str = ".env";
 
 /// Environment Kinds
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

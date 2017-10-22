@@ -5,15 +5,15 @@ use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use vidar::{self, Kind, Result};
 
-pub const COMMON: &'static str = r"key1=val1
+pub const COMMON: &str = r"key1=val1
 key2=val2
 key3=val3";
-pub const DEV: &'static str = r"url=https://localhost";
-pub const INT: &'static str = r"";
-pub const TEST: &'static str = r"# This is a comment
+pub const DEV: &str = r"url=https://localhost";
+pub const INT: &str = r"";
+pub const TEST: &str = r"# This is a comment
 url=https://testurl.vidar.com";
-pub const STAGE: &'static str = r"this is a bad property";
-pub const PROD: &'static str = r"url=https://produrl.vidar.com
+pub const STAGE: &str = r"this is a bad property";
+pub const PROD: &str = r"url=https://produrl.vidar.com
 creds=secret";
 
 fn create_file(kind: Kind, contents: &str, path: &mut PathBuf) -> Result<()> {
