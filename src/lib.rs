@@ -13,10 +13,10 @@ mod error;
 pub use error::{Error, ErrorKind, Result};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::{env, fmt};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::{env, fmt};
 
 /// Suffix for environment variables file name.
 const ENV_SUFFIX: &str = ".env";
