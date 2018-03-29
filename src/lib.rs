@@ -233,7 +233,7 @@ impl TryFrom<Config> for Environment {
 
         Ok(Environment {
             current: *config.kind(),
-            props: props,
+            props,
         })
     }
 }
