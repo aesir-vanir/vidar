@@ -12,5 +12,6 @@ version = "0.1.0"
 
 [dependencies]
 derive_builder = "0"
+dirs = "1"
 error-chain = "0"
 getset = "0"

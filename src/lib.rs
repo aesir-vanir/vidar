@@ -8,6 +8,8 @@ extern crate error_chain;
 #[macro_use]
 extern crate getset;
 
+extern crate dirs;
+
 mod error;
 
 pub use error::{Error, ErrorKind, Result};
@@ -152,7 +154,7 @@ pub fn get_config_path() -> Result<PathBuf> {
         Ok(val) => {
             config_path.push(val);
         }
-        Err(_e) => if let Some(home_dir) = env::home_dir() {
+        Err(_e) => if let Some(home_dir) = dirs::home_dir() {
             config_path.push(home_dir);
             config_path.push(".config");
         } else {
