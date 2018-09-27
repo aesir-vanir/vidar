@@ -154,12 +154,14 @@ pub fn get_config_path() -> Result<PathBuf> {
         Ok(val) => {
             config_path.push(val);
         }
-        Err(_e) => if let Some(home_dir) = dirs::home_dir() {
-            config_path.push(home_dir);
-            config_path.push(".config");
-        } else {
-            return Err(ErrorKind::ConfigPath.into());
-        },
+        Err(_e) => {
+            if let Some(home_dir) = dirs::home_dir() {
+                config_path.push(home_dir);
+                config_path.push(".config");
+            } else {
+                return Err(ErrorKind::ConfigPath.into());
+            }
+        }
     }
 
     Ok(config_path)
@@ -174,12 +176,14 @@ pub fn get_config_path() -> Result<PathBuf> {
         Ok(val) => {
             config_path.push(val);
         }
-        Err(_e) => if let Some(home_dir) = env::home_dir() {
-            config_path.push(home_dir);
-            config_path.push(".config");
-        } else {
-            return Err(ErrorKind::ConfigPath.into());
-        },
+        Err(_e) => {
+            if let Some(home_dir) = env::home_dir() {
+                config_path.push(home_dir);
+                config_path.push(".config");
+            } else {
+                return Err(ErrorKind::ConfigPath.into());
+            }
+        }
     }
 
     Ok(config_path)
